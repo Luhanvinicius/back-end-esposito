@@ -9,7 +9,7 @@ import { UserModel } from '../models/User';
 export class PaymentController {
   static async createPaymentIntent(req: AuthRequest, res: Response) {
     try {
-      const { tipo, paymentGateway = 'stripe' } = req.body;
+      const { tipo, paymentGateway = 'asaas' } = req.body;
       const userId = req.userId!;
 
       if (!tipo) {
@@ -21,6 +21,8 @@ export class PaymentController {
       let paymentIntent;
       let gatewayPaymentId;
 
+      const user = await UserModel.findById(userId);
+      
       if (paymentGateway === 'stripe') {
         paymentIntent = await PaymentService.createStripePaymentIntent({
           amount,
@@ -28,12 +30,19 @@ export class PaymentController {
         });
         gatewayPaymentId = paymentIntent.id;
       } else if (paymentGateway === 'mercadopago') {
-        const user = await UserModel.findById(userId);
         paymentIntent = await PaymentService.createMercadoPagoPayment({
           amount,
           metadata: { userId, tipo, email: user?.email },
         });
         gatewayPaymentId = paymentIntent.id?.toString();
+      } else if (paymentGateway === 'asaas') {
+        paymentIntent = await PaymentService.createAsaasPayment({
+          amount,
+          metadata: { userId, tipo, customerId: user?.id },
+          customerEmail: user?.email,
+          customerName: user?.name,
+        });
+        gatewayPaymentId = paymentIntent.id; // ID do pagamento no Asaas
       } else {
         return res.status(400).json({ error: 'Gateway de pagamento não suportado' });
       }
@@ -42,7 +51,7 @@ export class PaymentController {
       const payment = await PaymentService.savePayment({
         user_id: userId,
         amount,
-        payment_method: 'credit_card',
+        payment_method: 'pix',
         payment_gateway: paymentGateway,
         gateway_payment_id: gatewayPaymentId,
         metadata: { tipo, paymentIntent },
@@ -51,12 +60,20 @@ export class PaymentController {
       res.json({
         paymentId: payment.id,
         clientSecret: paymentIntent.client_secret || paymentIntent.id,
+        gatewayPaymentId: paymentIntent.id, // ID do pagamento no gateway (Asaas)
         amount,
         paymentGateway,
+        qrCode: paymentIntent.qrCode || null,
+        pixCopyPaste: paymentIntent.pixCopyPaste || null,
+        invoiceUrl: paymentIntent.invoiceUrl || null,
       });
     } catch (error: any) {
       console.error('Error in createPaymentIntent:', error);
-      res.status(500).json({ error: 'Erro ao criar intenção de pagamento' });
+      const errorMessage = error.message || 'Erro ao criar intenção de pagamento';
+      res.status(500).json({ 
+        error: errorMessage,
+        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      });
     }
   }
 
@@ -75,6 +92,8 @@ export class PaymentController {
         isPaid = await PaymentService.verifyStripePayment(gatewayPaymentId);
       } else if (paymentGateway === 'mercadopago') {
         isPaid = await PaymentService.verifyMercadoPagoPayment(gatewayPaymentId);
+      } else if (paymentGateway === 'asaas') {
+        isPaid = await PaymentService.verifyAsaasPayment(gatewayPaymentId);
       }
 
       if (!isPaid) {
@@ -159,6 +178,40 @@ export class PaymentController {
       res.json({ received: true });
     } catch (error: any) {
       console.error('Error in webhookStripe:', error);
+      res.status(400).send(`Webhook Error: ${error.message}`);
+    }
+  }
+
+  static async webhookAsaas(req: Request, res: Response) {
+    try {
+      const event = req.body;
+
+      // Asaas envia eventos de pagamento
+      if (event.event === 'PAYMENT_RECEIVED' || event.event === 'PAYMENT_CONFIRMED') {
+        const paymentId = event.payment?.id;
+        if (paymentId) {
+          const payment = await PaymentModel.findByGatewayPaymentId('asaas', paymentId);
+          
+          if (payment) {
+            await PaymentModel.updateStatus(payment.id, 'completed');
+
+            // Enviar recibo
+            const user = await UserModel.findById(payment.user_id);
+            if (user) {
+              try {
+                await EmailService.sendReceipt(payment, user);
+                await PaymentModel.markReceiptSent(payment.id);
+              } catch (emailError) {
+                console.error('Error sending receipt email:', emailError);
+              }
+            }
+          }
+        }
+      }
+
+      res.json({ received: true });
+    } catch (error: any) {
+      console.error('Error in webhookAsaas:', error);
       res.status(400).send(`Webhook Error: ${error.message}`);
     }
   }

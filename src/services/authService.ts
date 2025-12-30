@@ -23,7 +23,8 @@ export class AuthService {
   }
 
   static generateResetToken(): string {
-    return crypto.randomBytes(32).toString('hex');
+    // Gerar código de 6 dígitos numéricos
+    return Math.floor(100000 + Math.random() * 900000).toString();
   }
 
   static async sendPasswordResetEmail(email: string, token: string): Promise<void> {
@@ -33,4 +34,6 @@ export class AuthService {
     // TODO: Integrar com emailService
   }
 }
+
+
 

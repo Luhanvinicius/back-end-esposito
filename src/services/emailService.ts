@@ -6,11 +6,23 @@ dotenv.config();
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
   port: parseInt(process.env.EMAIL_PORT || '587'),
-  secure: false,
+  secure: false, // true para 465, false para outras portas
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
+  tls: {
+    rejectUnauthorized: false // Para desenvolvimento
+  }
+});
+
+// Verificar conexão ao inicializar
+transporter.verify(function (error, success) {
+  if (error) {
+    console.error('Erro na configuração de email:', error);
+  } else {
+    console.log('Servidor de email pronto para enviar mensagens');
+  }
 });
 
 export class EmailService {
@@ -88,12 +100,12 @@ export class EmailService {
   }
 
   static async sendPasswordReset(email: string, token: string, name: string): Promise<void> {
-    const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
+    const resetUrl = `${process.env.FRONTEND_URL}/reset-password`;
     
     const mailOptions = {
       from: process.env.EMAIL_FROM,
       to: email,
-      subject: 'Recuperação de Senha - E-Confere',
+      subject: 'Código de Recuperação de Senha - E-Confere',
       html: `
         <!DOCTYPE html>
         <html>
@@ -104,7 +116,8 @@ export class EmailService {
             .container { max-width: 600px; margin: 0 auto; padding: 20px; }
             .header { background: linear-gradient(135deg, #1E5AA8 0%, #2B6BC0 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
             .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
-            .button { display: inline-block; padding: 12px 30px; background: #1E5AA8; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+            .code-box { background: white; border: 2px solid #1E5AA8; border-radius: 8px; padding: 20px; text-align: center; margin: 20px 0; }
+            .code { font-size: 36px; font-weight: bold; color: #1E5AA8; letter-spacing: 8px; font-family: 'Courier New', monospace; }
             .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
           </style>
         </head>
@@ -116,12 +129,14 @@ export class EmailService {
             </div>
             <div class="content">
               <p>Olá ${name},</p>
-              <p>Você solicitou a recuperação de senha. Clique no botão abaixo para redefinir sua senha:</p>
-              <div style="text-align: center;">
-                <a href="${resetUrl}" class="button">Redefinir Senha</a>
+              <p>Você solicitou a recuperação de senha. Use o código abaixo para redefinir sua senha:</p>
+              <div class="code-box">
+                <p style="margin: 0; color: #666; font-size: 14px;">Seu código de recuperação:</p>
+                <div class="code">${token}</div>
               </div>
+              <p>Acesse <a href="${resetUrl}" style="color: #1E5AA8;">${resetUrl}</a> e digite este código para redefinir sua senha.</p>
+              <p><strong>Este código expira em 1 hora.</strong></p>
               <p>Se você não solicitou esta recuperação, ignore este e-mail.</p>
-              <p>Este link expira em 1 hora.</p>
             </div>
             <div class="footer">
               <p>Este é um e-mail automático, por favor não responda.</p>
@@ -142,4 +157,6 @@ export class EmailService {
     }
   }
 }
+
+
 

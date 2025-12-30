@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
 import { AnalysisModel } from '../models/Analysis';
 import { FreeAnalysisModel } from '../models/FreeAnalysis';
+import { UserModel } from '../models/User';
 import { AnalysisService } from '../services/analysisService';
 import { PaymentService } from '../services/paymentService';
 import multer from 'multer';
@@ -12,7 +13,9 @@ import fsSync from 'fs';
 // Configurar multer para upload de arquivos
 const storage = multer.diskStorage({
   destination: async (req, file, cb) => {
-    const uploadDir = path.join(process.cwd(), 'uploads', 'documents');
+    // Usar variável de ambiente ou padrão, com fallback para /tmp no Vercel
+    const baseDir = process.env.UPLOAD_DIR || (process.env.VERCEL ? '/tmp' : path.join(process.cwd(), 'uploads'));
+    const uploadDir = path.join(baseDir, 'documents');
     await fs.mkdir(uploadDir, { recursive: true });
     cb(null, uploadDir);
   },
@@ -39,6 +42,11 @@ export const upload = multer({
 export class AnalysisController {
   static async createAnalysis(req: AuthRequest, res: Response) {
     try {
+      console.log('=== RECEBENDO REQUISIÇÃO DE ANÁLISE ===');
+      console.log('Body:', req.body);
+      console.log('File:', req.file ? { name: req.file.originalname, size: req.file.size } : 'Nenhum arquivo');
+      console.log('Query:', req.query);
+      
       const { tipo } = req.body;
       const file = req.file;
 
@@ -93,18 +101,37 @@ export class AnalysisController {
 
       // Processar análise (síncrono para retornar PDF diretamente)
       try {
+        console.log('Iniciando processamento da análise:', { analysisId: analysis.id, tipo, fileName: file.originalname });
         const resultPath = await AnalysisService.processAnalysis(analysis.id, tipo, file.originalname);
+        console.log('Análise processada com sucesso. Caminho do resultado:', resultPath);
+        
+        // Verificar se o arquivo existe
+        if (!fsSync.existsSync(resultPath)) {
+          console.error('Arquivo PDF não encontrado:', resultPath);
+          await AnalysisModel.updateStatus(analysis.id, 'failed');
+          return res.status(500).json({ error: 'Erro ao gerar relatório PDF' });
+        }
         
         // Retornar PDF diretamente
+        console.log('Preparando resposta PDF...');
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename="relatorio_${analysis.id}.pdf"`);
         
+        console.log('Lendo arquivo PDF do disco...');
         const pdfBuffer = fsSync.readFileSync(resultPath);
+        console.log('PDF lido com sucesso. Tamanho:', pdfBuffer.length, 'bytes');
+        
+        console.log('Enviando PDF para o cliente...');
         res.send(pdfBuffer);
-      } catch (error) {
+        console.log('PDF enviado com sucesso!');
+      } catch (error: any) {
         console.error('Error processing analysis:', error);
+        console.error('Stack trace:', error.stack);
         await AnalysisModel.updateStatus(analysis.id, 'failed');
-        res.status(500).json({ error: 'Erro ao processar análise' });
+        res.status(500).json({ 
+          error: 'Erro ao processar análise',
+          details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
       }
     } catch (error: any) {
       console.error('Error in createAnalysis:', error);
@@ -172,7 +199,11 @@ export class AnalysisController {
         return res.status(404).json({ error: 'Análise não encontrada' });
       }
 
-      if (analysis.user_id !== userId) {
+      // Verificar se o usuário é admin ou se é o dono da análise
+      const user = await UserModel.findById(userId);
+      const isAdmin = user?.role === 'admin';
+      
+      if (!isAdmin && analysis.user_id !== userId) {
         return res.status(403).json({ error: 'Acesso negado' });
       }
 

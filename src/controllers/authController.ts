@@ -39,6 +39,7 @@ export class AuthController {
           id: user.id,
           name: user.name,
           email: user.email,
+          role: user.role || 'user',
         },
       });
     } catch (error: any) {
@@ -80,6 +81,7 @@ export class AuthController {
           id: user.id,
           name: user.name,
           email: user.email,
+          role: user.role || 'user',
         },
       });
     } catch (error: any) {
@@ -133,12 +135,33 @@ export class AuthController {
 
       // Buscar usuário pelo email
       const user = await UserModel.findByEmail(email);
-      if (!user || !user.reset_password_token || user.reset_password_token !== token) {
-        return res.status(400).json({ error: 'Token inválido ou expirado' });
+      if (!user) {
+        return res.status(400).json({ error: 'Email não encontrado' });
+      }
+
+      if (!user.reset_password_token) {
+        return res.status(400).json({ error: 'Token não encontrado. Solicite um novo código de recuperação.' });
+      }
+
+      // Comparar token (garantir que ambos sejam strings e remover espaços)
+      const storedToken = String(user.reset_password_token).trim();
+      const receivedToken = String(token).trim();
+      
+      console.log('Comparando tokens:', { 
+        stored: storedToken, 
+        received: receivedToken,
+        storedLength: storedToken.length,
+        receivedLength: receivedToken.length,
+        match: storedToken === receivedToken,
+        email: email 
+      });
+      
+      if (storedToken !== receivedToken) {
+        return res.status(400).json({ error: 'Código inválido. Verifique o código digitado.' });
       }
 
       if (!user.reset_password_expires || new Date(user.reset_password_expires) < new Date()) {
-        return res.status(400).json({ error: 'Token expirado' });
+        return res.status(400).json({ error: 'Código expirado. Solicite um novo código de recuperação.' });
       }
 
       // Atualizar senha
@@ -164,11 +187,72 @@ export class AuthController {
           name: user.name,
           email: user.email,
           email_verified: user.email_verified,
+          role: user.role || 'user',
         },
       });
     } catch (error: any) {
       console.error('Error in getProfile:', error);
       res.status(500).json({ error: 'Erro ao buscar perfil' });
+    }
+  }
+
+  static async googleLogin(req: Request, res: Response) {
+    try {
+      const { idToken, email, name, picture } = req.body;
+
+      if (!idToken || !email) {
+        return res.status(400).json({ error: 'Token do Google e email são obrigatórios' });
+      }
+
+      // Verificar se o usuário já existe
+      let user = await UserModel.findByEmail(email);
+
+      if (!user) {
+        // Criar novo usuário com Google
+        // Gerar senha aleatória (não será usada, mas é obrigatória no modelo)
+        const randomPassword = Math.random().toString(36).slice(-12) + Math.random().toString(36).slice(-12);
+        user = await UserModel.create({
+          name: name || email.split('@')[0],
+          email: email,
+          password: randomPassword, // Senha não será usada para login Google
+        });
+        
+        // Marcar email como verificado (Google já verifica)
+        await UserModel.updateEmailVerified(user.id, true);
+        
+        // Se for o email do admin, definir role como admin
+        if (email === 'admin@econfere.com') {
+          await UserModel.updateRole(user.id, 'admin');
+        }
+      } else {
+        // Se o usuário já existe e é o admin, garantir que tem role admin
+        if (email === 'admin@econfere.com' && user.role !== 'admin') {
+          await UserModel.updateRole(user.id, 'admin');
+        }
+      }
+      
+      // Buscar usuário novamente para garantir que temos o role atualizado
+      user = await UserModel.findById(user.id);
+
+      // Gerar token JWT
+      const token = AuthService.generateToken({
+        userId: user.id,
+        email: user.email,
+      });
+
+      res.json({
+        message: 'Login com Google realizado com sucesso',
+        token,
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role || 'user',
+        },
+      });
+    } catch (error: any) {
+      console.error('Error in googleLogin:', error);
+      res.status(500).json({ error: 'Erro ao fazer login com Google' });
     }
   }
 }

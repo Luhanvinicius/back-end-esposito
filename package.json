@@ -8,6 +8,8 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "init-db": "node scripts/init-db.js",
+    "create-admin": "node scripts/create-admin.js",
+    "migrate:role": "node scripts/run-migration-supabase.js",
     "migrate": "node-pg-migrate",
     "migrate:up": "node-pg-migrate up",
     "migrate:down": "node-pg-migrate down",

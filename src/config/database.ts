@@ -3,9 +3,16 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+// Configurar SSL para Supabase
+if (process.env.DATABASE_URL?.includes('supabase')) {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+}
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  ssl: process.env.DATABASE_URL?.includes('supabase') || process.env.NODE_ENV === 'production' 
+    ? { rejectUnauthorized: false } 
+    : false,
 });
 
 pool.on('error', (err) => {
@@ -14,4 +21,6 @@ pool.on('error', (err) => {
 });
 
 export default pool;
+
+
 

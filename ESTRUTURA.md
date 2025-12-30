@@ -123,3 +123,5 @@ back end/
 - [ ] Rate limiting mais robusto
 - [ ] Logging estruturado
 
+
+

@@ -7,6 +7,11 @@ import pool from './config/database';
 
 dotenv.config();
 
+// Configurar SSL para Supabase (desabilitar verificação de certificado)
+if (process.env.DATABASE_URL?.includes('supabase')) {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+}
+
 const app = express();
 const PORT = process.env.PORT || 8080;
 
@@ -47,10 +52,15 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   });
 });
 
-// Iniciar servidor
-app.listen(PORT, () => {
-  console.log(`🚀 Servidor rodando na porta ${PORT}`);
-  console.log(`📡 Ambiente: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🌐 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:3000'}`);
-});
+// Exportar o app para uso no Vercel
+export default app;
+
+// Iniciar servidor apenas se não estiver no ambiente Vercel
+if (process.env.VERCEL !== '1' && require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`🚀 Servidor rodando na porta ${PORT}`);
+    console.log(`📡 Ambiente: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`🌐 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:3000'}`);
+  });
+}
 

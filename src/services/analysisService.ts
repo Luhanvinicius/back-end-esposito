@@ -5,9 +5,14 @@ import { AnalysisModel } from '../models/Analysis';
 
 export class AnalysisService {
   static async generateMockReport(analysisId: string, tipo: string, fileName: string): Promise<string> {
-    // Criar diretório de resultados se não existir
-    const resultsDir = path.join(process.cwd(), 'uploads', 'results');
-    await fs.mkdir(resultsDir, { recursive: true });
+    try {
+      // Criar diretório de resultados se não existir
+      // Usar variável de ambiente ou padrão, com fallback para /tmp no Vercel
+      const baseDir = process.env.UPLOAD_DIR || (process.env.VERCEL ? '/tmp' : path.join(process.cwd(), 'uploads'));
+      const resultsDir = path.join(baseDir, 'results');
+      console.log('Criando diretório de resultados:', resultsDir);
+      await fs.mkdir(resultsDir, { recursive: true });
+      console.log('Diretório criado/verificado com sucesso');
 
     // Criar PDF mock
     const pdfDoc = await PDFDocument.create();
@@ -19,8 +24,8 @@ export class AnalysisService {
     const margin = 50;
     const lineHeight = 20;
 
-    // Título
-    page.drawText('RELATÓRIO DE ANÁLISE', {
+    // Título (sem acentos para evitar problemas de encoding)
+    page.drawText('RELATORIO DE ANALISE', {
       x: margin,
       y,
       size: 24,
@@ -29,8 +34,16 @@ export class AnalysisService {
     });
     y -= 40;
 
+    // Função para sanitizar texto (remover caracteres não suportados)
+    const sanitizeText = (text: string): string => {
+      return text
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '') // Remove acentos
+        .replace(/[^\x20-\x7E]/g, ''); // Remove caracteres não-ASCII
+    };
+
     // Informações da análise
-    page.drawText(`Tipo de Documento: ${tipo}`, {
+    page.drawText(`Tipo de Documento: ${sanitizeText(tipo)}`, {
       x: margin,
       y,
       size: 12,
@@ -38,7 +51,7 @@ export class AnalysisService {
     });
     y -= lineHeight;
 
-    page.drawText(`Arquivo Analisado: ${fileName}`, {
+    page.drawText(`Arquivo Analisado: ${sanitizeText(fileName)}`, {
       x: margin,
       y,
       size: 12,
@@ -46,7 +59,12 @@ export class AnalysisService {
     });
     y -= lineHeight * 2;
 
-    page.drawText(`Data da Análise: ${new Date().toLocaleDateString('pt-BR')}`, {
+    const dataFormatada = new Date().toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
+    page.drawText(`Data da Analise: ${dataFormatada}`, {
       x: margin,
       y,
       size: 12,
@@ -55,7 +73,7 @@ export class AnalysisService {
     y -= lineHeight * 2;
 
     // Resultados da análise (mock)
-    page.drawText('RESULTADOS DA ANÁLISE', {
+    page.drawText('RESULTADOS DA ANALISE', {
       x: margin,
       y,
       size: 16,
@@ -65,12 +83,12 @@ export class AnalysisService {
     y -= lineHeight * 2;
 
     const mockResults = [
-      '✓ Documento verificado com sucesso',
-      '✓ Nenhum ônus encontrado',
-      '✓ Matrícula válida e atualizada',
-      '✓ Dados do proprietário conferem',
-      '✓ Área do imóvel: 150m²',
-      '✓ Situação cadastral: Regular',
+      '[OK] Documento verificado com sucesso',
+      '[OK] Nenhum onus encontrado',
+      '[OK] Matricula valida e atualizada',
+      '[OK] Dados do proprietario conferem',
+      '[OK] Area do imovel: 150m2',
+      '[OK] Situacao cadastral: Regular',
     ];
 
     for (const result of mockResults) {
@@ -85,8 +103,8 @@ export class AnalysisService {
 
     y -= lineHeight * 2;
 
-    // Observações
-    page.drawText('OBSERVAÇÕES', {
+    // Observacoes
+    page.drawText('OBSERVACOES', {
       x: margin,
       y,
       size: 16,
@@ -95,7 +113,7 @@ export class AnalysisService {
     });
     y -= lineHeight * 2;
 
-    page.drawText('Este é um relatório gerado automaticamente. A análise foi realizada', {
+    page.drawText('Este e um relatorio gerado automaticamente. A analise foi realizada', {
       x: margin,
       y,
       size: 10,
@@ -103,7 +121,7 @@ export class AnalysisService {
     });
     y -= lineHeight;
 
-    page.drawText('usando inteligência artificial e pode conter informações aproximadas.', {
+    page.drawText('usando inteligencia artificial e pode conter informacoes aproximadas.', {
       x: margin,
       y,
       size: 10,
@@ -111,15 +129,15 @@ export class AnalysisService {
     });
     y -= lineHeight * 2;
 
-    page.drawText('Para mais informações, entre em contato com nosso suporte.', {
+    page.drawText('Para mais informacoes, entre em contato com nosso suporte.', {
       x: margin,
       y,
       size: 10,
       font,
     });
 
-    // Rodapé
-    page.drawText('E-Confere - Análise de Documentos Imobiliários', {
+    // Rodape
+    page.drawText('E-Confere - Analise de Documentos Imobiliarios', {
       x: margin,
       y: 30,
       size: 10,
@@ -127,27 +145,54 @@ export class AnalysisService {
       color: rgb(0.5, 0.5, 0.5),
     });
 
-    // Salvar PDF
-    const pdfBytes = await pdfDoc.save();
-    const resultFileName = `relatorio_${analysisId}_${Date.now()}.pdf`;
-    const resultPath = path.join(resultsDir, resultFileName);
-    
-    await fs.writeFile(resultPath, pdfBytes);
+      // Salvar PDF
+      console.log('Salvando PDF...');
+      const pdfBytes = await pdfDoc.save();
+      const resultFileName = `relatorio_${analysisId}_${Date.now()}.pdf`;
+      const resultPath = path.join(resultsDir, resultFileName);
+      
+      console.log('Escrevendo arquivo PDF em:', resultPath);
+      await fs.writeFile(resultPath, pdfBytes);
+      console.log('PDF salvo com sucesso. Tamanho:', pdfBytes.length, 'bytes');
 
-    return resultPath;
+      return resultPath;
+    } catch (error: any) {
+      console.error('Erro em generateMockReport:', error);
+      console.error('Stack:', error.stack);
+      throw error;
+    }
   }
 
   static async processAnalysis(analysisId: string, tipo: string, fileName: string): Promise<string> {
-    // Simular processamento (em produção, aqui seria a chamada para a API real)
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    try {
+      console.log('=== INICIANDO PROCESSAMENTO DE ANÁLISE ===');
+      console.log('Processando análise:', { analysisId, tipo, fileName });
+      
+      // Simular processamento (em produção, aqui seria a chamada para a API real)
+      console.log('Aguardando 2 segundos (simulação)...');
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      console.log('Simulação concluída.');
 
-    // Gerar relatório mock
-    const resultPath = await this.generateMockReport(analysisId, tipo, fileName);
+      // Gerar relatório mock
+      console.log('Gerando relatório mock...');
+      const resultPath = await this.generateMockReport(analysisId, tipo, fileName);
+      console.log('Relatório gerado em:', resultPath);
 
-    // Atualizar status da análise
-    await AnalysisModel.updateStatus(analysisId, 'completed', resultPath);
+      // Atualizar status da análise
+      console.log('Atualizando status da análise no banco...');
+      await AnalysisModel.updateStatus(analysisId, 'completed', resultPath);
+      console.log('Status da análise atualizado para completed');
 
-    return resultPath;
+      console.log('=== PROCESSAMENTO CONCLUÍDO ===');
+      return resultPath;
+    } catch (error: any) {
+      console.error('=== ERRO NO PROCESSAMENTO ===');
+      console.error('Erro em processAnalysis:', error);
+      console.error('Stack:', error.stack);
+      throw error;
+    }
   }
 }
+
+
 
