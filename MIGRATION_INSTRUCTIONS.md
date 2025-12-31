@@ -50,3 +50,4 @@ Você deve ver a coluna `role` com tipo `character varying(20)` e default `'user
 
 
 
+

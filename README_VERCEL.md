@@ -70,3 +70,4 @@ Veja `DEPLOY_VERCEL.md` para instruções detalhadas.
 
 4. **Database**: Certifique-se de que o banco de dados permite conexões externas.
 
+
