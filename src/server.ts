@@ -16,8 +16,27 @@ const app = express();
 const PORT = process.env.PORT || 8080;
 
 // Middlewares
+// Configurar CORS para aceitar múltiplas origens (desenvolvimento e produção)
+const allowedOrigins = [
+  'http://localhost:3000',
+  'https://frontend-analisecontrato.vercel.app',
+  process.env.FRONTEND_URL
+].filter(Boolean); // Remove valores undefined/null
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: (origin, callback) => {
+    // Permitir requisições sem origin (ex: mobile apps, Postman)
+    if (!origin) return callback(null, true);
+    
+    // Verificar se a origin está na lista de permitidas
+    if (allowedOrigins.some(allowed => origin === allowed || origin?.startsWith(allowed))) {
+      callback(null, true);
+    } else {
+      // Log para debug (remover em produção se necessário)
+      console.log('CORS blocked origin:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
 }));
 
